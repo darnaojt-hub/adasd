@@ -1,0 +1,1077 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OJT Face Punch</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+/* Layout: a camera stage that punches people in by face, beside a board of who is in today; ledger, DTR form, students and settings on their own tabs. */
+:root{
+  --bg:#e8ecf2; --raised:#ffffff; --soft:#f1f4f9; --ink:#14213d; --muted:#586277; --line:#c9d1de;
+  --accent:#2442cf; --accent-ink:#ffffff; --accent-soft:#dde4fb; --stamp:#bf2f2b; --ok:#1c7a4c; --warn:#9a5b00; --ok-soft:#dff3e8; --warn-soft:#fbefd5;
+  --sheet:#ffffff; --sheet-ink:#101626;
+  --font-text:'IBM Plex Sans',system-ui,-apple-system,'Segoe UI',sans-serif;
+  --font-mono:'IBM Plex Mono',ui-monospace,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#0e1320; --raised:#161d2e; --soft:#1c2438; --ink:#e7ecf6; --muted:#9aa5bb; --line:#2b3753;
+    --accent:#8aa0ff; --accent-ink:#0e1320; --accent-soft:#253066; --stamp:#ff8a82; --ok:#5fd39a; --warn:#f0b429; --ok-soft:#173a2b; --warn-soft:#3b2f12;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0e1320; --raised:#161d2e; --soft:#1c2438; --ink:#e7ecf6; --muted:#9aa5bb; --line:#2b3753;
+  --accent:#8aa0ff; --accent-ink:#0e1320; --accent-soft:#253066; --stamp:#ff8a82; --ok:#5fd39a; --warn:#f0b429; --ok-soft:#173a2b; --warn-soft:#3b2f12;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font:14px/1.5 var(--font-text);padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:20px 48px}
+.app{max-width:1100px;margin:0 auto;display:flex;flex-direction:column;gap:16px}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+.top{display:flex;flex-wrap:wrap;gap:8px 16px;justify-content:space-between;align-items:center}
+.brand{display:flex;align-items:center;gap:10px}
+.mark{width:22px;height:22px;border:2px solid var(--ink);border-radius:50%;position:relative}
+.mark::after{content:"";position:absolute;left:50%;top:3px;width:2px;height:7px;background:var(--ink);transform:translateX(-50%);box-shadow:4px 6px 0 0 var(--ink)}
+h1{font:600 15px/1 var(--font-mono);letter-spacing:.1em;text-transform:uppercase;margin:0}
+.who{display:flex;gap:12px;align-items:baseline;flex-wrap:wrap;color:var(--muted);font-size:13px}
+.who .saved{font:12px var(--font-mono)}
+.link{background:none;border:0;color:var(--accent);text-decoration:underline;cursor:pointer;padding:0}
+.sample{background:var(--accent-soft);border-radius:6px;padding:10px 14px;font-size:13px}
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);overflow-x:auto}
+.tabs button{background:none;border:0;border-bottom:3px solid transparent;padding:10px 14px;cursor:pointer;color:var(--muted);font-weight:500;white-space:nowrap}
+.tabs button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--accent)}
+
+.card{background:var(--raised);border:1px solid var(--line);border-radius:6px;padding:18px;min-width:0}
+.grid2{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,.8fr);gap:16px;align-items:start}
+@media (max-width:860px){.grid2{grid-template-columns:minmax(0,1fr)}}
+.lbl{font:500 11px var(--font-mono);letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+h2{margin:0 0 12px;font:600 12px var(--font-mono);letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;align-items:center}
+.ghost{background:none;border:1px solid var(--line);border-radius:6px;padding:7px 12px;cursor:pointer}
+.ghost:hover{border-color:var(--ink)}
+.ghost:disabled{opacity:.5;cursor:default}
+.solid{background:var(--ink);color:var(--bg);border:1px solid var(--ink);border-radius:6px;padding:7px 14px;cursor:pointer;font-weight:500}
+.solid:disabled{opacity:.5;cursor:default}
+.big{width:100%;padding:14px;border:0;border-radius:6px;background:var(--accent);color:var(--accent-ink);font:600 17px var(--font-text);cursor:pointer}
+.bad{color:var(--stamp);font-size:13px}
+
+.clockrow{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:10px}
+.clock{font:500 34px/1 var(--font-mono);font-variant-numeric:tabular-nums}
+.date{color:var(--muted)}
+.stage{position:relative;background:#0b0f1a;border-radius:6px;overflow:hidden;aspect-ratio:4/3;width:100%;max-height:440px}
+.stage video,.stage canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;transform:scaleX(-1)}
+.stage .ph{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:24px;color:#9aa5bb;font:13px var(--font-mono)}
+.chip{display:inline-flex;gap:8px;align-items:center;padding:6px 12px;border-radius:999px;border:1px solid var(--line);background:var(--soft);font:500 13px var(--font-mono);margin-top:12px;max-width:100%}
+.chip.ok{border-color:var(--ok);color:var(--ok)}
+.chip.warn{border-color:var(--warn);color:var(--warn)}
+.chip.bad{border-color:var(--stamp);color:var(--stamp)}
+.banner{display:flex;gap:14px;align-items:center;margin-top:12px;padding:12px 14px;border-radius:6px;background:var(--ok-soft);border-left:4px solid var(--ok)}
+.banner.warn{background:var(--warn-soft);border-left-color:var(--warn)}
+.banner img{width:84px;height:63px;object-fit:cover;border-radius:4px;flex:none}
+.banner .rn{font:600 20px/1.2 var(--font-text)}
+.banner .rs{font:500 15px var(--font-mono)}
+.banner .rp{color:var(--muted);font-size:13px;margin-top:2px}
+.enrollbar{margin-top:12px;padding:12px 14px;border:1px solid var(--accent);background:var(--accent-soft);border-radius:6px}
+.enrollbar b{font-weight:600}
+.dots{display:flex;gap:6px;margin:8px 0}
+.dots i{width:14px;height:14px;border-radius:50%;border:2px solid var(--accent);display:block}
+.dots i.on{background:var(--accent)}
+
+table.board,table.log{border-collapse:collapse;width:100%}
+table.board th,table.board td{padding:7px 6px;border-bottom:1px solid var(--line);text-align:left;font-size:13px}
+table.board thead th,table.log thead th{font:500 11px var(--font-mono);letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.st{display:inline-block;font:500 11px var(--font-mono);padding:2px 8px;border-radius:999px;border:1px solid var(--line);color:var(--muted)}
+.st.on{border-color:var(--ok);color:var(--ok)}
+.st.lunch{border-color:var(--warn);color:var(--warn)}
+.st.done{border-color:var(--accent);color:var(--accent)}
+.empty{color:var(--muted);padding:10px 0}
+
+.bar{height:10px;background:var(--soft);border:1px solid var(--line);border-radius:5px;overflow:hidden;margin:6px 0 4px}
+.bar i{display:block;height:100%;background:var(--accent)}
+.big-num{font:500 30px/1.1 var(--font-mono);font-variant-numeric:tabular-nums}
+.big-num small{font-size:14px;color:var(--muted)}
+dl.stats{display:grid;grid-template-columns:1fr auto;gap:6px 12px;margin:12px 0 0}
+dl.stats dt{color:var(--muted)}
+dl.stats dd{margin:0;font:500 13px var(--font-mono);text-align:right}
+.callout{margin-top:12px;padding:10px 12px;border-left:3px solid var(--accent);background:var(--soft);font-size:13px}
+.progwrap{display:grid;grid-template-columns:minmax(0,1fr);margin-bottom:12px}
+
+.toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px}
+.toolbar .grow{flex:1}
+.month{font:600 14px var(--font-mono);min-width:9.5em;text-align:center}
+.pill{font:500 12px var(--font-mono);background:var(--soft);border:1px solid var(--line);border-radius:999px;padding:3px 10px}
+select{background:var(--raised);border:1px solid var(--line);border-radius:6px;padding:7px 10px;min-width:12em;max-width:100%}
+.tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:6px;background:var(--raised)}
+table.log{min-width:860px}
+table.log th,table.log td{padding:4px 6px;border-bottom:1px solid var(--line);text-align:left;font-size:13px}
+table.log thead th{background:var(--soft);position:sticky;top:0}
+table.log tbody th{font:500 13px var(--font-mono);white-space:nowrap}
+table.log tbody th small{color:var(--muted);margin-left:6px;font-weight:400}
+table.log tr.off{background:var(--soft)}
+table.log tr.off th,table.log tr.off td{color:var(--muted)}
+table.log tr.today th{box-shadow:inset 3px 0 0 var(--accent)}
+.log input[type=time],.log input[type=text]{background:var(--raised);border:1px solid var(--line);border-radius:4px;padding:3px 5px;font:13px var(--font-mono)}
+.log input:disabled{opacity:.65}
+.log input[type=text]{width:100%;min-width:8em;font-family:var(--font-text)}
+.log .hrs{font:500 13px var(--font-mono);white-space:nowrap}
+.log .bad{font-size:12px}
+.ph{white-space:nowrap}
+img.th{width:34px;height:26px;object-fit:cover;border-radius:3px;border:1px solid var(--line);cursor:zoom-in;margin-right:3px;vertical-align:middle}
+.x{background:none;border:0;color:var(--muted);cursor:pointer;font-size:16px;padding:2px 6px}
+.x:hover:not(:disabled){color:var(--stamp)}
+.lockbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;background:var(--warn-soft);border-left:3px solid var(--warn);padding:8px 12px;margin-bottom:12px;font-size:13px;border-radius:0 6px 6px 0}
+
+.dtr-hint{color:var(--muted);font-size:13px;margin:0 0 12px}
+.dtr-wrap{overflow-x:auto;padding-bottom:6px}
+.dtr-pair{display:flex;gap:16px;min-width:max-content}
+.sheet{background:var(--sheet);color:var(--sheet-ink);font-family:"Times New Roman",Times,serif;font-size:11px;padding:12px 12px 14px;border:1px solid var(--line);width:372px;flex:none}
+.sheet .cs{font-size:10px;font-style:italic}
+.sheet h3{margin:2px 0 8px;font-size:14px;text-align:center;letter-spacing:.08em}
+.sheet .nm{text-align:center;font-weight:700;border-bottom:1px solid currentColor;min-height:17px;margin:0 18px;text-transform:uppercase}
+.sheet .nl{text-align:center;font-size:9px;margin-bottom:6px}
+.sheet .mo{margin:4px 0 0}
+.sheet .oh{margin:2px 0 4px;font-size:10px}
+.sheet table{width:100%;border-collapse:collapse;table-layout:fixed}
+.sheet th,.sheet td{border:1px solid currentColor;padding:0 2px;text-align:center;font-size:10px;height:16px;line-height:1.1}
+.sheet th{font-weight:700;font-size:8.5px}
+.sheet td.span{font-weight:700;letter-spacing:.08em;font-size:9px}
+.sheet tr.tot td{font-weight:700}
+.sheet .cert{margin:8px 0 18px;font-size:9.5px;text-align:justify;line-height:1.25}
+.sheet .sig{border-top:1px solid currentColor;margin:0 28px;text-align:center;font-size:9px;padding-top:1px}
+.sheet .ver{margin:8px 0 14px;font-size:9.5px}
+.sheet .sup{text-align:center;font-weight:700;text-transform:uppercase;font-size:10.5px}
+.sheet .sup small{display:block;font-weight:400;font-size:9px;text-transform:none}
+
+.stack{display:flex;flex-direction:column;gap:16px}
+.form{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px 16px}
+.field{display:flex;flex-direction:column;gap:4px;min-width:0}
+.field label{font:500 12px var(--font-mono);color:var(--muted);letter-spacing:.04em}
+.field input[type=text],.field input[type=number],.field input[type=time],.field input[type=date],.field input[type=password],.field textarea{background:var(--raised);border:1px solid var(--line);border-radius:4px;padding:7px 9px;min-width:0;width:100%}
+.field small{color:var(--muted);font-size:12px}
+.check{display:flex;gap:8px;align-items:flex-start;font-size:13px}
+.check input{margin-top:3px}
+.days{display:flex;gap:6px;flex-wrap:wrap}
+.days label{display:flex;align-items:center;gap:5px;border:1px solid var(--line);border-radius:999px;padding:4px 10px;cursor:pointer;font:500 12px var(--font-mono)}
+.days input:checked + span{font-weight:700;color:var(--accent)}
+table.stu{width:100%;border-collapse:collapse;min-width:1000px}
+table.stu th,table.stu td{padding:8px 6px;border-bottom:1px solid var(--line);text-align:left;vertical-align:middle}
+table.stu thead th{font:500 11px var(--font-mono);letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+table.stu input[type=text],table.stu input.t,table.stu input[type=number],table.stu input[type=date]{background:var(--raised);border:1px solid var(--line);border-radius:4px;padding:5px 7px;width:100%;min-width:0}
+.thumbrow{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.thumbrow img{width:56px;height:56px;object-fit:cover;border-radius:4px;border:1px solid var(--line)}
+.note{margin:10px 0 0;font-size:13px;color:var(--muted)}
+.av{width:40px;height:40px;border-radius:50%;object-fit:cover;border:1px solid var(--line);background:var(--soft);display:block}
+.avs{width:26px;height:26px;border-radius:50%;object-fit:cover;vertical-align:middle;margin-right:8px;border:1px solid var(--line)}
+.faceok{font:500 12px var(--font-mono);color:var(--ok)}
+.facenone{font:500 12px var(--font-mono);color:var(--warn)}
+textarea.paste{min-height:84px;font:12px var(--font-mono)}
+.toast{position:fixed;left:50%;bottom:max(20px,env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:9px 16px;border-radius:6px;font-size:13px;z-index:40;max-width:90vw}
+.modal{position:fixed;inset:0;background:rgba(5,8,16,.6);display:flex;align-items:center;justify-content:center;z-index:30;padding:16px}
+.modal .box{background:var(--raised);border-radius:8px;padding:18px;max-width:min(92vw,420px);width:100%}
+.modal .box.wide{max-width:min(92vw,520px)}
+.modal img.big-ph{width:100%;border-radius:6px;display:block}
+
+@page{size:A4 portrait;margin:8mm}
+@media print{
+  body{background:#fff;padding:0}
+  .no-print{display:none!important}
+  .app{max-width:none;gap:0}
+  .dtr-wrap{overflow:visible}
+  .dtr-pair{gap:6mm;min-width:0}
+  .sheet{flex:1;width:auto;border:0;padding:0;font-size:8pt;color:#000;background:#fff}
+  .sheet th,.sheet td{height:5.1mm;font-size:7.5pt}
+  .sheet th{font-size:6.5pt}
+  .sheet h3{font-size:11pt}
+}
+@media (prefers-reduced-motion:no-preference){.big,.chip{transition:background .15s,border-color .15s}}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top no-print">
+    <div class="brand"><span class="mark" aria-hidden="true"></span><h1>OJT Face Punch</h1></div>
+    <div class="who"><button class="ghost" id="lockBtn" type="button">Admin login</button><span class="saved" id="saved"></span></div>
+  </header>
+  <div class="sample no-print" id="sampleBar" hidden>A sample student is showing so you can see how the log and DTR look. It disappears when you enroll your first real student. <button class="link" id="clearSample" type="button">Remove it now</button></div>
+  <nav class="tabs no-print" role="tablist" id="tabs">
+    <button role="tab" type="button" data-tab="punch" aria-selected="true">Punch</button>
+    <button role="tab" type="button" data-tab="log" aria-selected="false">Month log</button>
+    <button role="tab" type="button" data-tab="dtr" aria-selected="false">DTR form</button>
+    <button role="tab" type="button" data-tab="students" aria-selected="false">Students</button>
+    <button role="tab" type="button" data-tab="settings" aria-selected="false">Settings</button>
+  </nav>
+
+  <main>
+    <section class="view" id="view-punch">
+      <div class="grid2">
+        <div class="card">
+          <div class="clockrow"><div class="clock" id="clock">--:--:--</div><div class="date" id="dateLine"></div></div>
+          <div class="stage" id="stage">
+            <video id="cam" playsinline muted autoplay></video>
+            <canvas id="ov"></canvas>
+            <div class="ph" id="camPh">Camera is off. Press Start camera and allow access.</div>
+          </div>
+          <div class="chip" id="camStatus">Camera off</div>
+          <div class="row">
+            <button class="solid" id="camStart" type="button">Start camera</button>
+            <button class="ghost" id="camStop" type="button" hidden>Stop camera</button>
+            <button class="solid" id="confirmBtn" type="button" hidden></button>
+          </div>
+          <div class="enrollbar" id="enrollBar" hidden></div>
+          <div class="banner" id="result" hidden></div>
+        </div>
+        <div class="stack">
+          <div class="card">
+            <h2>Today</h2>
+            <div id="board"></div>
+          </div>
+          <div class="card" id="manualCard" hidden>
+            <h2>Manual punch (no face check)</h2>
+            <div class="field"><label for="manSel">Student</label><select id="manSel"></select></div>
+            <div class="row"><button class="solid" id="manBtn" type="button">Punch now</button></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="view" id="view-log" hidden>
+      <div class="toolbar">
+        <select class="stuSel" aria-label="Student"></select>
+        <button class="ghost" type="button" data-nav="-1" aria-label="Previous month">&larr;</button>
+        <span class="month" data-month></span>
+        <button class="ghost" type="button" data-nav="1" aria-label="Next month">&rarr;</button>
+        <span class="grow"></span>
+        <span class="pill" data-monthtotal></span>
+      </div>
+      <div class="lockbar" id="logLock" hidden>Only the admin can edit times. <button class="link" type="button" id="logUnlock">Admin login</button></div>
+      <div class="card progwrap" id="prog"></div>
+      <div class="tablewrap">
+        <table class="log">
+          <thead><tr><th>Day</th><th>Time in</th><th>Lunch out</th><th>Lunch in</th><th>Time out</th><th>Hours</th><th>Photos</th><th>Remarks</th><th></th></tr></thead>
+          <tbody id="logBody"></tbody>
+        </table>
+      </div>
+      <datalist id="noteOpts"><option value="HOLIDAY"><option value="ABSENT"><option value="LEAVE"><option value="MEMORANDUM CIRCULAR NO. "><option value="NO WORK"></datalist>
+    </section>
+
+    <section class="view" id="view-dtr" hidden>
+      <div class="toolbar no-print">
+        <select class="stuSel" aria-label="Student"></select>
+        <button class="ghost" type="button" data-nav="-1" aria-label="Previous month">&larr;</button>
+        <span class="month" data-month></span>
+        <button class="ghost" type="button" data-nav="1" aria-label="Next month">&rarr;</button>
+        <span class="grow"></span>
+        <span class="row" style="margin:0"><button class="solid" id="a-print" type="button">Print or save as PDF</button><button class="ghost" id="a-xlsx" type="button">Download Excel</button><button class="ghost" id="a-csv" type="button">Download CSV</button></span>
+      </div>
+      <p class="dtr-hint no-print">Two copies print side by side on one A4 page, like the CSC Form 48 you hand in.</p>
+      <div class="dtr-wrap"><div class="dtr-pair" id="dtrPair"></div></div>
+    </section>
+
+    <section class="view" id="view-students" hidden>
+      <div class="stack">
+        <div class="card">
+          <h2>Register a student</h2>
+          <div class="form">
+            <div class="field"><label for="newName">Full name</label><input id="newName" type="text" autocomplete="off" placeholder="Leoven Reyes"></div>
+            <div class="field"><label for="newSchool">School</label><input id="newSchool" type="text" autocomplete="off"></div>
+            <div class="field"><label for="newCourse">Course / program</label><input id="newCourse" type="text" autocomplete="off"></div>
+            <div class="field"><label for="newReq">Required hours</label><input id="newReq" type="number" min="1" step="1"><small>Leave empty to use the default in Settings.</small></div>
+            <div class="field"><label for="newEnd">OJT end date</label><input id="newEnd" type="date"></div>
+          </div>
+          <div class="field" style="margin-top:14px"><label for="newPhotos">Face photos</label><input id="newPhotos" type="file" accept="image/*" multiple><small>Upload 3 to 5 clear photos of the student facing the camera, one person per photo, in good light. The app remembers the face from these. You can also skip this and use the camera.</small></div>
+          <div class="thumbrow" id="newThumbs"></div>
+          <label class="check" style="margin-top:12px"><input type="checkbox" id="newConsent"><span>The student agrees to have their face registered to record attendance. The face data and punch photos stay in this browser and can be deleted at any time.</span></label>
+          <div class="row"><button class="solid" id="newBtn" type="button">Save student</button><button class="ghost" id="newBtnCam" type="button">Save and use camera instead</button></div>
+          <p class="note" id="newMsg"></p>
+        </div>
+        <div class="card">
+          <h2>Registered students</h2>
+          <div class="tablewrap" style="border:0">
+            <table class="stu">
+              <thead><tr><th style="width:56px"></th><th>Name</th><th>School</th><th>Course</th><th>Face</th><th style="width:6.5em">Req. hrs</th><th style="width:9.5em">End date</th><th></th></tr></thead>
+              <tbody id="stuBody"></tbody>
+            </table>
+          </div>
+          <p class="empty" id="stuEmpty" hidden>No students yet.</p>
+          <input type="file" id="rowFile" accept="image/*" multiple hidden>
+        </div>
+      </div>
+    </section>
+
+    <section class="view" id="view-settings" hidden>
+      <div class="stack">
+        <div class="card">
+          <h2>Face punch</h2>
+          <div class="form">
+            <label class="check"><input type="checkbox" id="c-auto"><span>Punch automatically when a face is recognized</span></label>
+            <label class="check"><input type="checkbox" id="c-blink"><span>Require one blink first (stops a held-up photo, test it with your camera)</span></label>
+            <label class="check"><input type="checkbox" id="c-photos"><span>Save a small photo with every punch</span></label>
+            <label class="check"><input type="checkbox" id="c-manual"><span>Always show the manual punch box (no face check)</span></label>
+          </div>
+          <div class="form" style="margin-top:14px">
+            <div class="field"><label for="c-thr">Match strictness: <span id="thrVal"></span></label><input id="c-thr" type="range" min="0.35" max="0.65" step="0.01"><small>Lower is stricter. If the right person is not recognized, move it up a little. If the wrong person is matched, move it down.</small></div>
+            <div class="field"><label for="c-gap">Seconds before the same person can punch again</label><input id="c-gap" type="number" min="0" max="600" step="5"></div>
+            <div class="field"><label for="c-pause">Seconds the result stays on screen</label><input id="c-pause" type="number" min="1" max="30" step="1"></div>
+          </div>
+        </div>
+        <div class="card">
+          <h2>Hours rules</h2>
+          <div class="form">
+            <div class="field"><label for="c-req">Default required OJT hours</label><input id="c-req" type="number" min="1" step="1"></div>
+            <div class="field"><label for="c-daily">Hours expected per day</label><input id="c-daily" type="number" min="1" max="16" step="0.5"><small>Shorter days show as undertime on the DTR.</small></div>
+            <div class="field"><label for="c-floor">Don’t count time before</label><input id="c-floor" type="time"><small>Earlier arrivals are recorded but counted from this time. Clear to count everything.</small></div>
+            <div class="field"><label for="c-cap">Don’t count time after (optional)</label><input id="c-cap" type="time"><small>Leave empty to count overtime.</small></div>
+            <div class="field"><label for="c-lunch">Lunch to deduct if lunch is skipped (minutes)</label><input id="c-lunch" type="number" min="0" max="180" step="5"></div>
+          </div>
+          <div class="field" style="margin-top:14px"><label>Work days</label><div class="days" id="c-days"></div></div>
+        </div>
+        <div class="card">
+          <h2>DTR form text</h2>
+          <div class="form">
+            <div class="field"><label for="c-oh">Official hours for regular days</label><input id="c-oh" type="text"></div>
+            <div class="field"><label for="c-supName">Verified by (name, optional)</label><input id="c-supName" type="text"></div>
+            <div class="field"><label for="c-supTitle">Position (optional)</label><input id="c-supTitle" type="text"></div>
+          </div>
+        </div>
+        <div class="card">
+          <h2>Admin account</h2>
+          <p style="margin:0 0 10px;color:var(--muted)">The admin can register students, upload faces, edit times and change settings. This is a simple login stored in the page, so use a long password and keep the repository private.</p>
+          <div class="form">
+            <div class="field"><label for="admU">New username</label><input id="admU" type="text" autocomplete="off" autocapitalize="off"></div>
+            <div class="field"><label for="admP">New password</label><input id="admP" type="password" autocomplete="new-password"></div>
+          </div>
+          <div class="row"><button class="solid" id="admSave" type="button">Save admin login</button></div>
+        </div>
+        <div class="card">
+          <h2>Backup</h2>
+          <p style="margin:0 0 10px;color:var(--muted)">Everything is stored in this browser. The backup file holds students, face data and times, but not the punch photos. Keep it private, because it contains face data.</p>
+          <div class="row" style="margin-top:0"><button class="solid" id="bk-dl" type="button">Download backup (.json)</button><label class="ghost" style="cursor:pointer">Restore from file<input id="bk-file" type="file" accept="application/json,.json" hidden></label></div>
+          <div class="row"><button class="ghost" id="eraseBtn" type="button">Erase everything on this device</button></div>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+<div class="modal" id="modal" hidden><div class="box" id="modalBox"></div></div>
+<div class="toast" id="toast" role="status" hidden></div>
+
+<script>
+(() => {
+'use strict';
+const KEY = 'ojt-kiosk-v2';
+const FACE_VER = '1.7.12';
+const CDN_LIB = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api@' + FACE_VER + '/dist/face-api.js';
+const CDN_MODELS = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api@' + FACE_VER + '/model/';
+const LOCAL_LIB = 'vendor/face-api.js', LOCAL_MODELS = 'vendor/models/';
+
+const $ = id => document.getElementById(id);
+const pad = n => String(n).padStart(2, '0');
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const DOWN = ['SUNDAY','MONDAY','TUESDAY','WEDNESDAY','THURSDAY','FRIDAY','SATURDAY'];
+const DOWS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+const FIELDS = ['in','lo','li','out'];
+const SLOTS = {in:['Time in','AM arrival'], lo:['Lunch out','AM departure'], li:['Lunch in','PM arrival'], out:['Time out','PM departure']};
+const dkey = (y,m,d) => y + '-' + pad(m+1) + '-' + pad(d);
+const keyOf = dt => dkey(dt.getFullYear(), dt.getMonth(), dt.getDate());
+const toMin = s => { if (!s || typeof s !== 'string') return null; const p = s.split(':'); const h = +p[0], m = +p[1]; return (isFinite(h) && isFinite(m)) ? h*60+m : null; };
+const nowMin = () => { const n = new Date(); return n.getHours()*60 + n.getMinutes(); };
+const nowHM = () => { const n = new Date(); return pad(n.getHours()) + ':' + pad(n.getMinutes()); };
+const f12 = s => { const m = toMin(s); if (m == null) return ''; const h = Math.floor(m/60); return ((h%12)||12) + ':' + pad(m%60) + (h>=12 ? ' PM' : ' AM'); };
+const fdur = min => { min = Math.max(0, Math.round(min)); return Math.floor(min/60) + ' h ' + pad(min%60) + ' m'; };
+const addDays = (dt,n) => { const x = new Date(dt); x.setDate(x.getDate()+n); return x; };
+const fdate = dt => dt.toLocaleDateString('en', {weekday:'short', month:'short', day:'numeric'});
+
+/* ---------- data ---------- */
+const CFG = {
+  auto:true, thr:0.5, blink:false, gap:60, pause:5, photos:true, manual:false, admin:'',
+  required:540, daily:8, floor:'06:00', cap:'', lunch:60, workDays:[1,2,3,4,5],
+  oh:'6:00 AM – 12:00 NN, 1:00 PM – 5:00 PM', supName:'', supTitle:''
+};
+let DB, selId = null, tab = 'punch', view = (() => { const n = new Date(); return {y:n.getFullYear(), m:n.getMonth()}; })();
+const C = () => DB.cfg;
+const students = () => Object.values(DB.students).sort((a,b) => a.name.localeCompare(b.name));
+const cur = () => DB.students[selId] || null;
+const newId = () => 's' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+
+function seed() {
+  const now = new Date(), y = now.getFullYear(), m = now.getMonth(), days = {};
+  const ins = ['05:52','06:03','05:44','06:10','05:58','06:00','05:49','06:06'];
+  const outs = ['17:00','17:15','17:00','17:30','17:00','17:05','17:00','17:20'];
+  let i = 0;
+  for (let d = now.getDate()-1; d >= 1 && i < 8; d--) {
+    if ([1,2,3,4,5].includes(new Date(y,m,d).getDay())) { days[dkey(y,m,d)] = {in:ins[i], lo:'12:00', li:'13:00', out:outs[i], note:''}; i++; }
+  }
+  return {v:2, sample:true, cfg:Object.assign({}, CFG), students:{sample:{id:'sample', name:'Juan Dela Cruz (sample)', faces:[], req:null, end:'', days}}};
+}
+function normalize(o) {
+  if (!o || typeof o !== 'object' || !o.students || typeof o.students !== 'object') return null;
+  const cfg = Object.assign({}, CFG, o.cfg || {});
+  if (!Array.isArray(cfg.workDays)) cfg.workDays = CFG.workDays;
+  const st = {};
+  for (const id in o.students) { const s = o.students[id]; if (s && typeof s === 'object') st[id] = {id, name:String(s.name || 'Student'), faces:Array.isArray(s.faces) ? s.faces : [], req:s.req || null, end:s.end || '', consent:!!s.consent, school:s.school || '', course:s.course || '', avatar:s.avatar || '', days:(s.days && typeof s.days === 'object') ? s.days : {}}; }
+  return {v:2, sample:!!o.sample, cfg, students:st};
+}
+function load() { try { const raw = localStorage.getItem(KEY); if (raw) { const d = normalize(JSON.parse(raw)); if (d) return d; } } catch (e) {} return seed(); }
+function save() {
+  try { localStorage.setItem(KEY, JSON.stringify(DB)); $('saved').textContent = 'Saved ' + f12(nowHM()); }
+  catch (e) { toast('Could not save. Browser storage may be full or blocked.'); }
+}
+
+/* ---------- photos (IndexedDB) ---------- */
+let idb = null; const phCache = {};
+function openIDB() { return new Promise(res => { try { const r = indexedDB.open('ojt-face-punch', 1); r.onupgradeneeded = () => r.result.createObjectStore('p'); r.onsuccess = () => { idb = r.result; res(true); }; r.onerror = () => res(false); } catch (e) { res(false); } }); }
+const pkey = (sid, date, slot) => sid + '|' + date + '|' + slot;
+function putPhoto(key, data) { phCache[key] = data; if (!idb) return; try { idb.transaction('p', 'readwrite').objectStore('p').put(data, key); } catch (e) {} }
+function photosForMonth(sid, y, m) {
+  return new Promise(res => {
+    const out = {}; if (!idb) return res(out);
+    try {
+      const prefix = sid + '|' + y + '-' + pad(m+1) + '-';
+      const req = idb.transaction('p').objectStore('p').openCursor(IDBKeyRange.bound(prefix, prefix + '￿'));
+      req.onsuccess = () => { const c = req.result; if (c) { out[c.key] = c.value; c.continue(); } else res(out); };
+      req.onerror = () => res(out);
+    } catch (e) { res(out); }
+  });
+}
+function delPhotos(sid) { if (!idb) return; try { idb.transaction('p', 'readwrite').objectStore('p').delete(IDBKeyRange.bound(sid + '|', sid + '|￿')); } catch (e) {} }
+function clearAllPhotos() { if (!idb) return; try { idb.transaction('p', 'readwrite').objectStore('p').clear(); } catch (e) {} }
+
+/* ---------- hours maths ---------- */
+function calc(d, live) {
+  const P = C(), floor = toMin(P.floor), cap = toMin(P.cap);
+  const seg = (s, t) => { if (s == null || t == null) return 0; if (floor != null) s = Math.max(s, floor); if (cap != null) t = Math.min(t, cap); return Math.max(0, t - s); };
+  const a = toMin(d.in), b = toMin(d.lo), c = toMin(d.li), e = toMin(d.out);
+  let total = 0, complete = false;
+  if (a != null && e != null && b == null && c == null) {
+    const span = seg(a, e); total = span > 300 ? Math.max(0, span - (+P.lunch || 0)) : span; complete = true;
+  } else {
+    if (a != null) { if (b != null) total += seg(a, b); else if (live != null && c == null && e == null) total += seg(a, live); }
+    if (c != null) { if (e != null) total += seg(c, e); else if (live != null) total += seg(c, live); }
+    complete = a != null && b != null && c != null && e != null;
+  }
+  return {total, complete};
+}
+const isWork = dt => C().workDays.includes(dt.getDay());
+const underOf = (c, work) => (c.complete && work) ? Math.max(0, Math.round(C().daily*60 - c.total)) : 0;
+function issue(d, k) {
+  const v = FIELDS.map(f => toMin(d[f])); let last = -1;
+  for (let i = 0; i < 4; i++) { if (v[i] == null) continue; if (v[i] < last) return 'Check the order of the times'; last = v[i]; }
+  if (d.in && !d.out && k < keyOf(new Date())) return 'No time out';
+  return '';
+}
+function totals(s) {
+  const tk = keyOf(new Date()); let t = 0, n = 0, sum = 0;
+  for (const k in s.days) { const c = calc(s.days[k], k === tk ? nowMin() : null); t += c.total; if (c.complete && c.total > 0) { n++; sum += c.total; } }
+  return {t, n, avg: n ? sum/n : C().daily*60};
+}
+function monthTotal(s, y, m) { const dim = new Date(y, m+1, 0).getDate(); let t = 0; for (let d = 1; d <= dim; d++) { const r = s.days[dkey(y,m,d)]; if (r) t += calc(r).total; } return t; }
+const reqOf = s => s.req || C().required;
+const nextSlot = d => d.out ? null : (FIELDS.find(f => !d[f]) || null);
+function dayStatus(d) {
+  if (!d || !d.in) return ['Not in', ''];
+  if (d.out) return ['Done', 'done'];
+  if (d.lo && !d.li) return ['On lunch', 'lunch'];
+  return ['Working', 'on'];
+}
+
+/* ---------- toast, modal ---------- */
+let toastTimer;
+function toast(msg) { const t = $('toast'); t.textContent = msg; t.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.hidden = true; }, 3000); }
+function openModal(html, wide) { $('modalBox').className = 'box' + (wide ? ' wide' : ''); $('modalBox').innerHTML = html; $('modal').hidden = false; }
+function closeModal() { $('modal').hidden = true; $('modalBox').innerHTML = ''; }
+$('modal').addEventListener('click', e => { if (e.target === $('modal')) closeModal(); });
+
+/* ---------- sha256 (for the admin login) ---------- */
+const sha256 = (() => {
+  const K = new Uint32Array([0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2]);
+  const rr = (x, k) => (x >>> k) | (x << (32 - k));
+  return msg => {
+    const b = new TextEncoder().encode(msg), l = b.length, n = ((l + 9 + 63) >> 6) << 6, m = new Uint8Array(n);
+    m.set(b); m[l] = 0x80;
+    const dv = new DataView(m.buffer); dv.setUint32(n - 4, (l * 8) >>> 0); dv.setUint32(n - 8, Math.floor(l * 8 / 4294967296));
+    const h = new Uint32Array([0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19]), w = new Uint32Array(64);
+    for (let o = 0; o < n; o += 64) {
+      for (let i = 0; i < 16; i++) w[i] = dv.getUint32(o + i * 4);
+      for (let i = 16; i < 64; i++) { const s0 = rr(w[i-15],7) ^ rr(w[i-15],18) ^ (w[i-15] >>> 3), s1 = rr(w[i-2],17) ^ rr(w[i-2],19) ^ (w[i-2] >>> 10); w[i] = (w[i-16] + s0 + w[i-7] + s1) >>> 0; }
+      let a = h[0], b2 = h[1], c = h[2], d = h[3], e = h[4], f = h[5], g = h[6], hh = h[7];
+      for (let i = 0; i < 64; i++) {
+        const S1 = rr(e,6) ^ rr(e,11) ^ rr(e,25), ch = (e & f) ^ (~e & g), t1 = (hh + S1 + ch + K[i] + w[i]) >>> 0;
+        const S0 = rr(a,2) ^ rr(a,13) ^ rr(a,22), mj = (a & b2) ^ (a & c) ^ (b2 & c), t2 = (S0 + mj) >>> 0;
+        hh = g; g = f; f = e; e = (d + t1) >>> 0; d = c; c = b2; b2 = a; a = (t1 + t2) >>> 0;
+      }
+      h[0] += a; h[1] += b2; h[2] += c; h[3] += d; h[4] += e; h[5] += f; h[6] += g; h[7] += hh;
+    }
+    return Array.from(h, x => x.toString(16).padStart(8, '0')).join('');
+  };
+})();
+
+/* ---------- admin login ---------- */
+const ADMIN_DEFAULT = 'a8badc16b480c4e99f83ff4e18398785ce883f4f556725c0dd7d40730af8c953';
+let isAdmin = false, lastAct = Date.now(), fails = 0, lockUntil = 0;
+const locked = () => !isAdmin;
+const adminHash = (u, p) => sha256('ojt-admin:' + String(u).trim().toLowerCase() + ':' + p);
+function askLogin() {
+  return new Promise(res => {
+    if (isAdmin) return res(true);
+    openModal('<h2>Admin login</h2><form id="loginForm"><div class="field"><label for="lgU">Username</label><input id="lgU" type="text" autocomplete="username" autocapitalize="off"></div><div class="field" style="margin-top:10px"><label for="lgP">Password</label><input id="lgP" type="password" autocomplete="current-password"></div><p class="bad" id="lgErr"></p><div class="row"><button class="solid" type="submit">Log in</button><button class="ghost" type="button" id="lgCancel">Cancel</button></div></form>');
+    $('lgU').focus();
+    $('lgCancel').onclick = () => { closeModal(); res(false); };
+    $('loginForm').onsubmit = ev => {
+      ev.preventDefault();
+      const wait = lockUntil - Date.now();
+      if (wait > 0) { $('lgErr').textContent = 'Too many tries. Wait ' + Math.ceil(wait / 1000) + ' seconds.'; return; }
+      if (adminHash($('lgU').value, $('lgP').value) === (C().admin || ADMIN_DEFAULT)) { isAdmin = true; fails = 0; lastAct = Date.now(); closeModal(); applyLock(); res(true); }
+      else { fails++; if (fails >= 5) { lockUntil = Date.now() + 30000; fails = 0; $('lgErr').textContent = 'Too many tries. Wait 30 seconds.'; } else $('lgErr').textContent = 'Wrong username or password'; $('lgP').value = ''; }
+    };
+  });
+}
+function applyLock() {
+  $('lockBtn').textContent = isAdmin ? 'Admin · Log out' : 'Admin login';
+  $('logLock').hidden = isAdmin;
+  if (!isAdmin && (tab === 'students' || tab === 'settings')) setTab('punch');
+  document.querySelectorAll('#logBody input, #logBody .x').forEach(el => { el.disabled = !isAdmin; });
+}
+
+/* ---------- renderers ---------- */
+function renderClock() {
+  const n = new Date();
+  $('clock').textContent = pad(n.getHours()) + ':' + pad(n.getMinutes()) + ':' + pad(n.getSeconds());
+  $('dateLine').textContent = n.toLocaleDateString('en', {weekday:'long', month:'long', day:'numeric', year:'numeric'});
+}
+function renderBoard() {
+  const list = students(), tk = keyOf(new Date());
+  if (!list.length) { $('board').innerHTML = '<p class="empty">No students yet. Add one in the Students tab.</p>'; return; }
+  $('board').innerHTML = '<table class="board"><thead><tr><th>Student</th><th>Status</th><th>Last</th><th>Hours</th></tr></thead><tbody>' + list.map(s => {
+    const d = s.days[tk] || {}, st = dayStatus(d), last = [...FIELDS].reverse().find(f => d[f]);
+    return '<tr><td>' + (s.avatar ? '<img class="avs" src="' + s.avatar + '" alt="">' : '') + esc(s.name) + '</td><td><span class="st ' + st[1] + '">' + st[0] + '</span></td><td style="font-family:var(--font-mono)">' + (last ? f12(d[last]) : '') + '</td><td style="font-family:var(--font-mono)">' + (d.in ? fdur(calc(d, nowMin()).total) : '') + '</td></tr>';
+  }).join('') + '</tbody></table>';
+}
+function renderSelects() {
+  const list = students();
+  if (!DB.students[selId]) selId = list.length ? list[0].id : null;
+  const opts = list.length ? list.map(s => '<option value="' + s.id + '"' + (s.id === selId ? ' selected' : '') + '>' + esc(s.name) + '</option>').join('') : '<option value="">No students</option>';
+  document.querySelectorAll('.stuSel').forEach(e => { e.innerHTML = opts; });
+  $('manSel').innerHTML = list.map(s => '<option value="' + s.id + '">' + esc(s.name) + '</option>').join('');
+}
+function progressHTML(s) {
+  if (!s) return '<p class="empty">Add a student to see progress.</p>';
+  const T = totals(s), req = Math.max(1, reqOf(s)) * 60, rem = Math.max(0, req - T.t), pct = Math.min(100, T.t / req * 100);
+  const today = new Date(), tk = keyOf(today), start = (s.days[tk] && s.days[tk].in) ? addDays(today, 1) : today;
+  let lines = '', warn = '';
+  if (s.end && rem > 0) {
+    const end = new Date(s.end + 'T00:00:00'); let n = 0;
+    if (!isNaN(end)) for (let x = new Date(start); x <= end; x = addDays(x, 1)) if (isWork(x)) n++;
+    if (!isNaN(end) && n > 0) { lines += '<dt>Workdays until ' + fdate(end) + '</dt><dd>' + n + '</dd><dt>Needed per workday</dt><dd>' + fdur(rem / n) + '</dd>'; if (rem / n > 12*60) warn = 'That is more than a full day. Add workdays or move the end date.'; }
+  }
+  let fin = '';
+  if (rem > 0 && C().workDays.length && T.avg > 0) {
+    let left = rem, x = new Date(start), guard = 0;
+    while (left > 0 && guard++ < 800) { if (isWork(x)) left -= T.avg; if (left > 0) x = addDays(x, 1); }
+    if (guard < 800) fin = 'At an average of ' + fdur(T.avg) + ' per day, ' + esc(s.name.split(' ')[0]) + ' finishes around <b>' + fdate(x) + '</b>.';
+  }
+  return '<h2>OJT progress</h2><div class="big-num">' + fdur(T.t) + ' <small>of ' + reqOf(s) + ' h</small></div>' +
+    '<div class="bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="' + Math.round(pct) + '"><i style="width:' + pct.toFixed(1) + '%"></i></div>' +
+    '<div class="lbl">' + pct.toFixed(1) + '% rendered</div><dl class="stats"><dt>Remaining</dt><dd>' + (rem > 0 ? fdur(rem) : 'Complete') + '</dd><dt>Full days recorded</dt><dd>' + T.n + '</dd><dt>Average full day</dt><dd>' + fdur(T.avg) + '</dd>' + lines + '</dl>' +
+    (warn ? '<div class="callout" style="border-left-color:var(--stamp)">' + warn + '</div>' : '') + (fin ? '<div class="callout">' + fin + '</div>' : (rem <= 0 ? '<div class="callout">Required hours reached.</div>' : ''));
+}
+function monthLabel() { return new Date(view.y, view.m, 1).toLocaleDateString('en', {month:'long', year:'numeric'}); }
+let logToken = 0;
+function renderLog() {
+  const s = cur(), tk = keyOf(new Date());
+  $('prog').innerHTML = progressHTML(s);
+  if (!s) { $('logBody').innerHTML = '<tr><td colspan="9" class="empty">No students yet.</td></tr>'; return; }
+  const dim = new Date(view.y, view.m+1, 0).getDate(); let html = '';
+  for (let n = 1; n <= dim; n++) {
+    const dt = new Date(view.y, view.m, n), k = dkey(view.y, view.m, n), d = s.days[k] || {}, work = isWork(dt);
+    html += '<tr class="' + (work ? '' : 'off') + (k === tk ? ' today' : '') + '"><th scope="row">' + n + '<small>' + DOWS[dt.getDay()] + '</small></th>' +
+      FIELDS.map(f => '<td><input type="time" data-k="' + k + '" data-f="' + f + '" value="' + esc(d[f] || '') + '" aria-label="' + SLOTS[f][0] + ', day ' + n + '"></td>').join('') +
+      '<td class="hrs" id="h-' + k + '"></td><td class="ph" id="ph-' + k + '"></td>' +
+      '<td><input type="text" list="noteOpts" data-k="' + k + '" data-f="note" value="' + esc(d.note || '') + '" aria-label="Remarks, day ' + n + '" placeholder="' + (work ? '' : DOWN[dt.getDay()]) + '"></td>' +
+      '<td><button class="x" type="button" data-clear="' + k + '" aria-label="Clear day ' + n + '" title="Clear this day">&times;</button></td></tr>';
+  }
+  $('logBody').innerHTML = html;
+  for (let n = 1; n <= dim; n++) updateRow(dkey(view.y, view.m, n));
+  applyLock();
+  const tok = ++logToken, sid = s.id, y = view.y, m = view.m;
+  photosForMonth(sid, y, m).then(map => {
+    if (tok !== logToken) return;
+    for (let n = 1; n <= dim; n++) {
+      const k = dkey(y, m, n), cell = $('ph-' + k); if (!cell) continue;
+      cell.innerHTML = FIELDS.map(f => { const key = pkey(sid, k, f); if (map[key]) phCache[key] = map[key]; return phCache[key] ? '<img class="th" src="' + phCache[key] + '" data-ph="' + key + '" alt="' + SLOTS[f][0] + ' photo" title="' + SLOTS[f][0] + '">' : ''; }).join('');
+    }
+  });
+}
+function updateRow(k) {
+  const el = $('h-' + k), s = cur(); if (!el || !s) return;
+  const d = s.days[k] || {}, c = calc(d, k === keyOf(new Date()) ? nowMin() : null), bad = issue(d, k);
+  el.innerHTML = (c.total > 0 ? fdur(c.total) : '') + (bad ? (c.total > 0 ? '<br>' : '') + '<span class="bad">' + bad + '</span>' : '');
+}
+function onLogChange(ev) {
+  const t = ev.target, k = t.dataset && t.dataset.k, f = t.dataset && t.dataset.f, s = cur(); if (!k || !f || !s || locked()) return;
+  const d = s.days[k] || (s.days[k] = {in:'', lo:'', li:'', out:'', note:''});
+  d[f] = t.value.trim();
+  if (!FIELDS.some(x => d[x]) && !d.note) delete s.days[k];
+  save(); updateRow(k); renderDerived();
+}
+function renderMonthTotals() {
+  const s = cur();
+  document.querySelectorAll('[data-month]').forEach(e => { e.textContent = monthLabel(); });
+  document.querySelectorAll('[data-monthtotal]').forEach(e => { e.textContent = 'Month total ' + (s ? fdur(monthTotal(s, view.y, view.m)) : '0 h 00 m'); });
+}
+
+function dtrRows(s) {
+  const dim = new Date(view.y, view.m+1, 0).getDate(), rows = [];
+  for (let n = 1; n <= dim; n++) {
+    const dt = new Date(view.y, view.m, n), d = s.days[dkey(view.y, view.m, n)], work = isWork(dt), has = d && FIELDS.some(f => d[f]);
+    if (has) { const c = calc(d), u = underOf(c, work); rows.push({n, kind:'time', t:FIELDS.map(f => f12(d[f])), uh:u ? Math.floor(u/60) : '', um:u ? u%60 : '', total:c.total}); }
+    else if (d && d.note) rows.push({n, kind:'span', text:d.note.toUpperCase(), total:0});
+    else if (!work) rows.push({n, kind:'span', text:DOWN[dt.getDay()], total:0});
+    else rows.push({n, kind:'blank', total:0});
+  }
+  return rows;
+}
+function sheetHTML(s) {
+  const P = C(), rows = dtrRows(s), total = rows.reduce((a, r) => a + r.total, 0);
+  const body = rows.map(r => {
+    if (r.kind === 'time') return '<tr><td>' + r.n + '</td>' + r.t.map(x => '<td>' + x + '</td>').join('') + '<td>' + r.uh + '</td><td>' + r.um + '</td></tr>';
+    if (r.kind === 'span') return '<tr><td>' + r.n + '</td><td class="span" colspan="6">' + esc(r.text) + '</td></tr>';
+    return '<tr><td>' + r.n + '</td><td></td><td></td><td></td><td></td><td></td><td></td></tr>';
+  }).join('');
+  return '<div class="sheet"><div class="cs">Civil Service Form No. 48</div><h3>DAILY TIME RECORD</h3>' +
+    '<div class="nm">' + esc(s.name) + '</div><div class="nl">(Name)</div>' +
+    '<div class="mo">For the month of <b>' + esc(monthLabel()) + '</b></div><div class="oh">Official hours for regular days: ' + esc(P.oh) + '</div>' +
+    '<table><colgroup><col style="width:8%"><col style="width:17%"><col style="width:17%"><col style="width:17%"><col style="width:17%"><col style="width:12%"><col style="width:12%"></colgroup><thead><tr><th rowspan="2">DAY</th><th colspan="2">A.M.</th><th colspan="2">P.M.</th><th colspan="2">UNDER TIME</th></tr>' +
+    '<tr><th>ARRIVAL</th><th>DEPARTURE</th><th>ARRIVAL</th><th>DEPARTURE</th><th>HOURS</th><th>MIN.</th></tr></thead><tbody>' + body +
+    '<tr class="tot"><td colspan="5" style="text-align:right;padding-right:6px">TOTAL HOURS RENDERED</td><td colspan="2">' + fdur(total) + '</td></tr></tbody></table>' +
+    '<p class="cert">I hereby certify on my honor that the above is true and correct report of the hours of work performed, record of which was made daily at the time of arrival at and departure from the office.</p>' +
+    '<div class="sig">SIGNATURE</div><p class="ver">Verified as to the prescribed office hour.</p>' +
+    '<div class="sup">' + esc(P.supName) + '<small>' + esc(P.supTitle) + '</small></div></div>';
+}
+function renderDTR() { const s = cur(); if (!s) { $('dtrPair').innerHTML = '<p class="empty">Add a student to see the DTR.</p>'; return; } const h = sheetHTML(s); $('dtrPair').innerHTML = h + h; }
+
+function renderStudents() {
+  const list = students();
+  $('stuEmpty').hidden = list.length > 0;
+  const f = (s, k, ph) => '<td><input type="text" class="t" data-sid="' + s.id + '" data-f="' + k + '" value="' + esc(s[k] || '') + '" placeholder="' + ph + '" aria-label="' + k + '"></td>';
+  $('stuBody').innerHTML = list.map(s => '<tr><td>' + (s.avatar ? '<img class="av" src="' + s.avatar + '" alt="">' : '<span class="av"></span>') + '</td>' +
+    '<td><input type="text" class="t" data-sid="' + s.id + '" data-f="name" value="' + esc(s.name) + '" aria-label="Name"></td>' + f(s, 'school', '') + f(s, 'course', '') +
+    '<td>' + (s.faces.length ? '<span class="faceok">' + s.faces.length + ' sample' + (s.faces.length > 1 ? 's' : '') + '</span>' : '<span class="facenone">No face yet</span>') + '</td>' +
+    '<td><input type="number" min="1" data-sid="' + s.id + '" data-f="req" value="' + (s.req || '') + '" placeholder="' + C().required + '" aria-label="Required hours"></td>' +
+    '<td><input type="date" data-sid="' + s.id + '" data-f="end" value="' + esc(s.end || '') + '" aria-label="OJT end date"></td>' +
+    '<td style="white-space:nowrap"><button class="ghost" type="button" data-act="upload" data-sid="' + s.id + '">Upload photos</button> <button class="ghost" type="button" data-act="cam" data-sid="' + s.id + '">Camera</button> ' +
+    (s.faces.length ? '<button class="ghost" type="button" data-act="reset" data-sid="' + s.id + '">Reset face</button> ' : '') + '<button class="ghost" type="button" data-act="del" data-sid="' + s.id + '">Delete</button></td></tr>').join('');
+}
+function renderSettings() {
+  const P = C();
+  [['c-auto','auto'],['c-blink','blink'],['c-photos','photos'],['c-manual','manual']].forEach(([id, k]) => { $(id).checked = !!P[k]; });
+  [['c-thr','thr'],['c-gap','gap'],['c-pause','pause'],['c-req','required'],['c-daily','daily'],['c-floor','floor'],['c-cap','cap'],['c-lunch','lunch'],['c-oh','oh'],['c-supName','supName'],['c-supTitle','supTitle']].forEach(([id, k]) => { $(id).value = P[k]; });
+  $('thrVal').textContent = (+P.thr).toFixed(2);
+  $('c-days').innerHTML = [1,2,3,4,5,6,0].map(i => '<label><input type="checkbox" data-wd="' + i + '"' + (P.workDays.includes(i) ? ' checked' : '') + '><span>' + DOWS[i] + '</span></label>').join('');
+}
+function renderDerived() { renderBoard(); renderMonthTotals(); if (tab === 'log') renderLog(); if (tab === 'dtr') renderDTR(); }
+function renderAll() { $('sampleBar').hidden = !DB.sample; renderSelects(); renderStudents(); renderSettings(); renderDerived(); renderManual(); applyLock(); }
+function setTab(t) {
+  tab = t;
+  document.querySelectorAll('.tabs button').forEach(b => b.setAttribute('aria-selected', String(b.dataset.tab === t)));
+  ['punch','log','dtr','students','settings'].forEach(v => { $('view-' + v).hidden = v !== t; });
+  if (t === 'log') renderLog(); if (t === 'dtr') renderDTR(); renderMonthTotals();
+}
+async function goTab(t) { if ((t === 'students' || t === 'settings') && locked()) { if (!await askLogin()) return; } setTab(t); }
+
+/* ---------- face engine ---------- */
+const engine = {state:'idle', ready:false};
+function loadScript(src) { return new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = () => rej(new Error('Could not load ' + src)); document.head.appendChild(s); }); }
+async function loadEngine() {
+  if (engine.ready) return;
+  engine.state = 'loading';
+  if (!window.faceapi) { try { await loadScript(LOCAL_LIB); } catch (e) { await loadScript(CDN_LIB); } }
+  try { if (faceapi.tf && faceapi.tf.ready) await faceapi.tf.ready(); } catch (e) {}
+  let lastErr;
+  for (const base of [LOCAL_MODELS, CDN_MODELS]) {
+    try {
+      await Promise.all([faceapi.nets.tinyFaceDetector.loadFromUri(base), faceapi.nets.faceLandmark68Net.loadFromUri(base), faceapi.nets.faceRecognitionNet.loadFromUri(base)]);
+      engine.ready = true; engine.state = 'ready'; return;
+    } catch (e) { lastErr = e; }
+  }
+  engine.state = 'error'; throw lastErr || new Error('Models failed to load');
+}
+async function detectAll() {
+  const v = cam.video; if (v.readyState < 2 || !v.videoWidth) return [];
+  const opts = new faceapi.TinyFaceDetectorOptions({inputSize:320, scoreThreshold:0.5});
+  const rs = await faceapi.detectAllFaces(v, opts).withFaceLandmarks().withFaceDescriptors();
+  return rs.map(r => ({box:r.detection.box, score:r.detection.score, desc:Array.from(r.descriptor), pts:r.landmarks.positions}));
+}
+const dist = (a, b) => { let s = 0; for (let i = 0; i < 128; i++) { const d = a[i] - b[i]; s += d*d; } return Math.sqrt(s); };
+function matchFace(desc) {
+  let best = null, second = Infinity;
+  for (const s of students()) {
+    if (!s.faces.length) continue;
+    let m = Infinity; for (const f of s.faces) { const d = dist(desc, f); if (d < m) m = d; }
+    if (!best || m < best.d) { if (best) second = Math.min(second, best.d); best = {id:s.id, d:m}; } else second = Math.min(second, m);
+  }
+  if (!best || best.d >= C().thr) return null;
+  if (second - best.d < 0.04) return null;
+  return best;
+}
+const anyFaces = () => students().some(s => s.faces.length);
+function ear(p) {
+  if (!p || p.length < 48) return 1;
+  const d = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+  const e = i => (d(p[i+1], p[i+5]) + d(p[i+2], p[i+4])) / (2 * d(p[i], p[i+3]) || 1);
+  return (e(36) + e(42)) / 2;
+}
+
+/* ---------- camera ---------- */
+const cam = {video:$('cam'), stream:null, running:false, loopOn:false, pauseUntil:0, cand:null, enroll:null};
+function setStatus(msg, kind) { const c = $('camStatus'); c.textContent = msg; c.className = 'chip' + (kind ? ' ' + kind : ''); }
+function clearOverlay() { const o = $('ov'); o.getContext('2d').clearRect(0, 0, o.width, o.height); }
+function drawBox(f, kind) {
+  const o = $('ov'), v = cam.video; if (o.width !== v.videoWidth) { o.width = v.videoWidth; o.height = v.videoHeight; }
+  const g = o.getContext('2d'); g.clearRect(0, 0, o.width, o.height);
+  g.strokeStyle = kind === 'ok' ? '#3ccf91' : '#f0b429'; g.lineWidth = 4; g.strokeRect(f.box.x, f.box.y, f.box.width, f.box.height);
+}
+async function startCamera() {
+  if (cam.stream) return;
+  setStatus('Starting camera…');
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { setStatus('This browser or address does not allow camera access. Use https or localhost.', 'bad'); return; }
+  try { cam.stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:'user', width:{ideal:640}, height:{ideal:480}}, audio:false}); }
+  catch (e) { setStatus('Camera blocked or not found. Allow camera access for this page and try again.', 'bad'); return; }
+  cam.video.srcObject = cam.stream; try { await cam.video.play(); } catch (e) {}
+  $('camPh').hidden = true; $('camStart').hidden = true; $('camStop').hidden = false;
+  setStatus('Loading face recognition…');
+  try { await loadEngine(); }
+  catch (e) { setStatus('Face recognition could not load. Check the internet connection, or see the README for offline files.', 'bad'); renderManual(); return; }
+  cam.running = true; setStatus(anyFaces() ? 'Looking for a face…' : 'No faces enrolled yet. Add a student first.');
+  loop();
+}
+function stopCamera() {
+  cam.running = false; cam.cand = null;
+  if (cam.stream) cam.stream.getTracks().forEach(t => t.stop());
+  cam.stream = null; cam.video.srcObject = null; clearOverlay();
+  $('camPh').hidden = false; $('camStart').hidden = false; $('camStop').hidden = true; $('confirmBtn').hidden = true;
+  setStatus('Camera off');
+}
+async function loop() {
+  if (cam.loopOn) return; cam.loopOn = true;
+  while (cam.running) {
+    const t0 = Date.now();
+    try { if (tab === 'punch' && !document.hidden && t0 >= cam.pauseUntil && engine.ready) await step(); }
+    catch (e) { console.warn(e); setStatus('Recognition error: ' + (e.message || e), 'bad'); await sleep(1000); }
+    await sleep(Math.max(80, 150 - (Date.now() - t0)));
+  }
+  cam.loopOn = false;
+}
+const area = f => f.box.width * f.box.height;
+async function step() {
+  const faces = await detectAll();
+  $('confirmBtn').hidden = true;
+  if (!faces.length) { cam.cand = null; clearOverlay(); if (!cam.enroll) setStatus(anyFaces() ? 'Looking for a face…' : 'No faces enrolled yet. Add a student first.'); return; }
+  faces.sort((a, b) => area(b) - area(a));
+  const f = faces[0];
+  if (faces.length > 1 && area(faces[1]) > 0.5 * area(f)) { cam.cand = null; drawBox(f, 'warn'); setStatus('One person at a time, please', 'warn'); return; }
+  if (f.box.width < cam.video.videoWidth * 0.2) { cam.cand = null; drawBox(f, 'warn'); setStatus('Come a little closer', 'warn'); return; }
+  if (cam.enroll) return enrollStep(f);
+  const m = matchFace(f.desc);
+  if (!m) { cam.cand = null; drawBox(f, 'warn'); setStatus(anyFaces() ? 'Face not recognized. Ask to be enrolled in the Students tab.' : 'No faces enrolled yet. Add a student first.', 'warn'); return; }
+  const s = DB.students[m.id];
+  if (cam.cand && cam.cand.id === m.id) cam.cand.hits++; else cam.cand = {id:m.id, hits:1, open:false, blinked:false};
+  if (C().blink) { const e = ear(f.pts); if (e > 0.25) cam.cand.open = true; if (cam.cand.open && e < 0.2) cam.cand.blinked = true; }
+  drawBox(f, 'ok');
+  const ready = cam.cand.hits >= 3 && (!C().blink || cam.cand.blinked);
+  if (!ready) { setStatus(s.name + (C().blink && cam.cand.hits >= 3 ? ' · blink once to confirm' : ' · hold still…'), 'ok'); return; }
+  if (C().auto) { cam.cand = null; await punchFor(m.id); }
+  else { const nx = nextSlot(s.days[keyOf(new Date())] || {}); setStatus(s.name, 'ok'); if (nx) { $('confirmBtn').hidden = false; $('confirmBtn').dataset.sid = s.id; $('confirmBtn').textContent = 'Punch ' + SLOTS[nx][0] + ' for ' + s.name; } else setStatus(s.name + ' · already done for today', 'ok'); }
+}
+
+/* ---------- punching ---------- */
+let ac, resultTimer;
+function beep(freq) { try { ac = ac || new (window.AudioContext || window.webkitAudioContext)(); const o = ac.createOscillator(), g = ac.createGain(); o.frequency.value = freq; g.gain.value = 0.08; o.connect(g); g.connect(ac.destination); o.start(); o.stop(ac.currentTime + 0.14); } catch (e) {} }
+function avatarFrom(src, box) {
+  try {
+    const w = src.videoWidth || src.naturalWidth || src.width, h = src.videoHeight || src.naturalHeight || src.height;
+    const pw = box.width * 0.35, ph = box.height * 0.35;
+    const sx = Math.max(0, box.x - pw), sy = Math.max(0, box.y - ph), sw = Math.min(w - sx, box.width + pw * 2), sh = Math.min(h - sy, box.height + ph * 2), side = Math.max(sw, sh);
+    const c = document.createElement('canvas'); c.width = 96; c.height = 96; const g = c.getContext('2d');
+    g.fillStyle = '#222'; g.fillRect(0, 0, 96, 96); g.drawImage(src, sx, sy, sw, sh, (96 - 96 * sw / side) / 2, (96 - 96 * sh / side) / 2, 96 * sw / side, 96 * sh / side);
+    return c.toDataURL('image/jpeg', 0.7);
+  } catch (e) { return ''; }
+}
+function snap() {
+  const v = cam.video; if (!cam.stream || v.readyState < 2 || !v.videoWidth) return '';
+  const c = document.createElement('canvas'); c.width = 200; c.height = Math.round(200 * v.videoHeight / v.videoWidth) || 150;
+  c.getContext('2d').drawImage(v, 0, 0, c.width, c.height); return c.toDataURL('image/jpeg', 0.6);
+}
+function showResult(s, text, photo, kind) {
+  const r = $('result');
+  r.className = 'banner' + (kind === 'warn' ? ' warn' : '');
+  const T = totals(s);
+  r.innerHTML = (photo ? '<img src="' + photo + '" alt="">' : '') + '<div><div class="rn">' + esc(s.name) + '</div><div class="rs">' + esc(text) + '</div>' + (kind === 'warn' ? '' : '<div class="rp">Total ' + fdur(T.t) + ' of ' + reqOf(s) + ' h</div>') + '</div>';
+  r.hidden = false; clearTimeout(resultTimer); resultTimer = setTimeout(() => { r.hidden = true; }, (+C().pause || 5) * 1000);
+}
+async function punchFor(id, manual) {
+  const s = DB.students[id]; if (!s) return;
+  const k = keyOf(new Date()), d = s.days[k] || (s.days[k] = {in:'', lo:'', li:'', out:'', note:''});
+  const hold = (+C().pause || 5) * 1000; cam.pauseUntil = Date.now() + hold;
+  const gap = (+C().gap || 0) * 1000;
+  if (d.ts && Date.now() - d.ts < gap) { showResult(s, 'Already punched at ' + f12([...FIELDS].reverse().map(f => d[f]).find(Boolean)) + '. Wait a moment.', '', 'warn'); beep(300); if (!FIELDS.some(f => d[f])) delete s.days[k]; return; }
+  const slot = nextSlot(d);
+  if (!slot) { showResult(s, 'Already done for today (' + f12(d.out) + ')', '', 'warn'); beep(300); return; }
+  if (DB.sample && id !== 'sample') { delete DB.students.sample; DB.sample = false; }
+  const t = nowHM(); d[slot] = t; d.ts = Date.now(); save();
+  const photo = C().photos ? snap() : ''; if (photo) putPhoto(pkey(id, k, slot), photo);
+  beep(slot === 'in' ? 880 : slot === 'out' ? 520 : 660);
+  showResult(s, SLOTS[slot][0] + ' · ' + f12(t), photo, 'ok');
+  setStatus(s.name + ' · ' + SLOTS[slot][0] + ' ' + f12(t), 'ok');
+  cam.cand = null; renderDerived(); renderSelects();
+}
+
+/* ---------- enrolling ---------- */
+const PROMPTS = ['Look straight at the camera', 'Turn your head slightly left', 'Turn your head slightly right', 'Tilt your chin up a little', 'Look straight again'];
+const ENROLL_N = 5;
+function renderEnrollBar() {
+  const e = cam.enroll, bar = $('enrollBar');
+  if (!e) { bar.hidden = true; return; }
+  const s = DB.students[e.id];
+  bar.hidden = false;
+  bar.innerHTML = '<b>Enrolling ' + esc(s ? s.name : '') + '</b><div class="dots">' + Array.from({length:ENROLL_N}, (_, i) => '<i class="' + (i < e.samples.length ? 'on' : '') + '"></i>').join('') + '</div><div>' + (e.samples.length < ENROLL_N ? PROMPTS[e.samples.length] : 'Saving…') + '</div><div class="row"><button class="ghost" type="button" id="enrollCancel">Cancel</button></div>';
+  $('enrollCancel').onclick = () => { cam.enroll = null; renderEnrollBar(); setStatus('Enrollment cancelled'); };
+}
+async function startEnroll(id, append) {
+  if (!isAdmin) return;
+  cam.enroll = {id, samples:[], last:0, append:!!append};
+  setTab('punch'); renderEnrollBar();
+  if (!cam.stream) await startCamera();
+  else if (!engine.ready) setStatus('Face recognition is not available, so enrolling is not possible.', 'bad');
+}
+function enrollStep(f) {
+  const e = cam.enroll, now = Date.now();
+  drawBox(f, 'ok');
+  if (f.score < 0.6) { setStatus('Face the camera', 'warn'); return; }
+  setStatus(PROMPTS[Math.min(e.samples.length, ENROLL_N - 1)], 'ok');
+  if (now - e.last < 800) return;
+  e.last = now; e.samples.push(f.desc.map(x => +x.toFixed(4))); if (!e.avatar) e.avatar = avatarFrom(cam.video, f.box); renderEnrollBar(); beep(700);
+  if (e.samples.length >= ENROLL_N) finishEnroll();
+}
+function dupCheck(sid, samples) {
+  for (const o of students()) {
+    if (o.id === sid || !o.faces.length) continue;
+    let m = Infinity; for (const smp of samples) for (const fc of o.faces) m = Math.min(m, dist(smp, fc));
+    if (m < C().thr) return o.name;
+  }
+  return null;
+}
+function saveFaces(id, samples, avatar) {
+  const s = DB.students[id]; if (!s) return false;
+  const other = dupCheck(id, samples);
+  if (other) { toast('This face is already registered as ' + other); return false; }
+  s.faces = s.faces.concat(samples).slice(-12); s.consent = true; if (avatar && !s.avatar) s.avatar = avatar;
+  if (DB.sample) { delete DB.students.sample; DB.sample = false; }
+  selId = s.id; save(); renderAll(); return true;
+}
+function finishEnroll() {
+  const e = cam.enroll, s = DB.students[e.id]; cam.enroll = null; cam.pauseUntil = Date.now() + 3000;
+  if (!s) { renderEnrollBar(); return; }
+  const ok = saveFaces(s.id, e.samples, e.avatar); renderEnrollBar();
+  if (!ok) { setStatus('This face is already registered under another name', 'bad'); return; }
+  beep(880); setStatus(s.name + ' registered', 'ok'); toast(s.name + ' registered. They can punch now.'); setTab('students');
+}
+async function shrinkImg(file, url) {
+  let src, w, h;
+  try { src = await createImageBitmap(file, {imageOrientation:'from-image'}); w = src.width; h = src.height; }
+  catch (e) { src = await loadImg(url); w = src.naturalWidth; h = src.naturalHeight; }
+  if (!w || !h) throw new Error('empty image');
+  const k = Math.min(1, 800 / Math.max(w, h)), c = document.createElement('canvas');
+  c.width = Math.round(w * k); c.height = Math.round(h * k);
+  c.getContext('2d').drawImage(src, 0, 0, c.width, c.height);
+  if (src.close) src.close();
+  return c;
+}
+const loadImg = url => new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error('bad image')); i.src = url; });
+async function facesFromFiles(files, onProg) {
+  await loadEngine();
+  const out = [], errs = []; let avatar = '';
+  for (let i = 0; i < files.length; i++) {
+    const f = files[i]; if (onProg) onProg(i + 1, files.length);
+    const url = URL.createObjectURL(f);
+    let stage = 'read';
+    try {
+      const img = await shrinkImg(f, url);
+      stage = 'detect';
+      const rs = await faceapi.detectAllFaces(img, new faceapi.TinyFaceDetectorOptions({inputSize:416, scoreThreshold:0.5})).withFaceLandmarks().withFaceDescriptors();
+      if (!rs.length) { errs.push(f.name + ': no face found'); continue; }
+      const ar = r => r.detection.box.width * r.detection.box.height;
+      rs.sort((a, b) => ar(b) - ar(a));
+      if (rs.length > 1 && ar(rs[1]) > 0.5 * ar(rs[0])) { errs.push(f.name + ': more than one face'); continue; }
+      out.push(Array.from(rs[0].descriptor, x => +x.toFixed(4)));
+      if (!avatar) avatar = avatarFrom(img, rs[0].detection.box);
+    } catch (e) { errs.push(f.name + (stage === 'read' ? ': could not open the photo (' + (e && e.message || 'unknown') + ')' : ': face detection failed (' + (e && e.message || 'unknown') + ')')); }
+    finally { URL.revokeObjectURL(url); }
+  }
+  return {faces:out, errs, avatar};
+}
+async function uploadFaces(id, files, msgEl) {
+  const s = DB.students[id]; if (!s || !files.length) return false;
+  const say = t => { if (msgEl) msgEl.textContent = t; };
+  say('Loading face recognition…');
+  let r;
+  try { r = await facesFromFiles(Array.from(files), (i, n) => say('Reading photo ' + i + ' of ' + n + '…')); }
+  catch (e) { say('Face recognition could not load. Check the internet connection or see the README.'); return false; }
+  if (!r.faces.length) { say('No usable face found. ' + r.errs.join('; ')); return false; }
+  if (!saveFaces(id, r.faces, r.avatar)) { say('This face is already registered under another name.'); return false; }
+  say(r.faces.length + ' face sample' + (r.faces.length > 1 ? 's' : '') + ' saved for ' + s.name + (r.errs.length ? '. Skipped: ' + r.errs.join('; ') : '') + (r.faces.length < 3 ? '. Adding a few more photos makes recognition more reliable.' : '.'));
+  return true;
+}
+
+/* ---------- manual punch ---------- */
+function renderManual() { $('manualCard').hidden = !(C().manual || engine.state === 'error') || !students().length; }
+
+/* ---------- exports ---------- */
+const fileBase = s => 'DTR-' + (s.name || 'student').replace(/[^\w]+/g, '_') + '-' + view.y + '-' + pad(view.m+1);
+function monthAOA(s) {
+  const P = C(), rows = dtrRows(s);
+  const out = [['CIVIL SERVICE FORM No. 48'], ['DAILY TIME RECORD'], [s.name], ['For the month of ' + monthLabel()], ['Official hours for regular days: ' + P.oh], [],
+    ['Day','AM Arrival','AM Departure','PM Arrival','PM Departure','Hours worked','Undertime (h)','Undertime (min)','Remarks']];
+  let total = 0;
+  rows.forEach(r => { total += r.total; if (r.kind === 'time') out.push([r.n].concat(r.t, [r.total ? +(r.total/60).toFixed(2) : '', r.uh, r.um, ''])); else out.push([r.n,'','','','','','','', r.kind === 'span' ? r.text : '']); });
+  out.push(['TOTAL','','','','', +(total/60).toFixed(2), '', '', fdur(total)]);
+  return out;
+}
+function download(name, mime, text) {
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], {type:mime})); a.download = name;
+  document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
+}
+const toCSV = rows => rows.map(r => r.map(v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"').join(',')).join('\r\n');
+function exportCsv() { const s = cur(); if (s) download(fileBase(s) + '.csv', 'text/csv', '﻿' + toCSV(monthAOA(s))); }
+function exportXlsx() {
+  const s = cur(); if (!s) return;
+  if (!window.XLSX) { exportCsv(); toast('Excel library did not load, saved a CSV instead'); return; }
+  const ws = XLSX.utils.aoa_to_sheet(monthAOA(s)); ws['!cols'] = [{wch:7},{wch:12},{wch:13},{wch:12},{wch:13},{wch:13},{wch:13},{wch:15},{wch:28}];
+  const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, monthLabel().slice(0, 31)); XLSX.writeFile(wb, fileBase(s) + '.xlsx');
+}
+function printDtr() {
+  const s = cur(); if (!s) return;
+  setTab('dtr'); const old = document.title; document.title = fileBase(s);
+  const back = () => { document.title = old; window.removeEventListener('afterprint', back); };
+  window.addEventListener('afterprint', back); setTimeout(() => window.print(), 60);
+}
+function restore(text) {
+  let d = null; try { d = normalize(JSON.parse(text)); } catch (e) {}
+  if (!d) { toast('That is not a valid backup'); return; }
+  DB = d; selId = null; save(); renderAll(); toast('Backup restored');
+}
+
+/* ---------- events ---------- */
+function bindCfg(id, key, type, min) {
+  $(id).addEventListener('input', e => {
+    let v = type === 'bool' ? e.target.checked : e.target.value;
+    if (type === 'num') { v = parseFloat(v); if (!isFinite(v) || v < min) return; }
+    C()[key] = v; save();
+    if (id === 'c-thr') $('thrVal').textContent = (+v).toFixed(2);
+    if (id === 'c-manual') renderManual();
+    renderDerived();
+  });
+}
+function init() {
+  DB = load(); renderClock();
+  openIDB().then(() => { if (tab === 'log') renderLog(); });
+  [['c-auto','auto','bool'],['c-blink','blink','bool'],['c-photos','photos','bool'],['c-manual','manual','bool'],['c-thr','thr','num',0.2],['c-gap','gap','num',0],['c-pause','pause','num',1],['c-req','required','num',1],['c-daily','daily','num',1],['c-floor','floor','text'],['c-cap','cap','text'],['c-lunch','lunch','num',0],['c-oh','oh','text'],['c-supName','supName','text'],['c-supTitle','supTitle','text']].forEach(a => bindCfg(a[0], a[1], a[2], a[3]));
+  $('c-days').addEventListener('change', e => { const i = +e.target.dataset.wd, set = new Set(C().workDays); e.target.checked ? set.add(i) : set.delete(i); C().workDays = Array.from(set).sort(); save(); renderDerived(); });
+
+  $('tabs').addEventListener('click', e => { const b = e.target.closest('button[data-tab]'); if (b) goTab(b.dataset.tab); });
+  document.querySelectorAll('.stuSel').forEach(sel => sel.addEventListener('change', e => { selId = e.target.value; document.querySelectorAll('.stuSel').forEach(x => { x.value = selId; }); renderDerived(); }));
+  document.querySelectorAll('[data-nav]').forEach(b => b.addEventListener('click', () => { const d = new Date(view.y, view.m + (+b.dataset.nav), 1); view = {y:d.getFullYear(), m:d.getMonth()}; renderDerived(); }));
+  $('logBody').addEventListener('change', onLogChange);
+  $('logBody').addEventListener('click', e => {
+    const img = e.target.closest('img[data-ph]');
+    if (img) { const key = img.dataset.ph, p = key.split('|'); openModal('<img class="big-ph" src="' + phCache[key] + '" alt="Punch photo"><p style="margin:10px 0 0">' + esc(cur() ? cur().name : '') + ' · ' + esc(SLOTS[p[2]][0]) + ' · ' + esc(p[1]) + ' ' + f12(cur() && cur().days[p[1]] ? cur().days[p[1]][p[2]] : '') + '</p><div class="row"><button class="solid" type="button" id="phClose">Close</button></div>', true); $('phClose').onclick = closeModal; return; }
+    const b = e.target.closest('[data-clear]'); if (!b || locked() || !cur()) return; delete cur().days[b.dataset.clear]; save(); renderDerived();
+  });
+  $('logUnlock').onclick = askLogin;
+  $('lockBtn').onclick = () => { if (isAdmin) { isAdmin = false; applyLock(); toast('Logged out'); } else askLogin(); };
+
+  $('camStart').onclick = startCamera; $('camStop').onclick = stopCamera;
+  $('confirmBtn').onclick = () => { const id = $('confirmBtn').dataset.sid; $('confirmBtn').hidden = true; if (id) punchFor(id); };
+  $('manBtn').onclick = () => { const id = $('manSel').value; if (id) punchFor(id, true); };
+  $('clearSample').onclick = () => { delete DB.students.sample; DB.sample = false; save(); renderAll(); };
+
+  let newFiles = [];
+  $('newPhotos').addEventListener('change', e => {
+    newFiles = Array.from(e.target.files);
+    $('newThumbs').innerHTML = newFiles.map(f => '<img alt="" src="' + URL.createObjectURL(f) + '">').join('');
+  });
+  const addStudent = async useCam => {
+    if (!isAdmin && !await askLogin()) return;
+    const name = $('newName').value.trim().replace(/\s+/g, ' ');
+    if (!name) { toast('Type the student name first'); return; }
+    if (!$('newConsent').checked) { toast('The student must agree to face registration'); return; }
+    if (students().some(s => s.name.toLowerCase() === name.toLowerCase())) { toast('A student with this name already exists'); return; }
+    const id = newId(), req = parseFloat($('newReq').value);
+    DB.students[id] = {id, name, school:$('newSchool').value.trim(), course:$('newCourse').value.trim(), faces:[], avatar:'', req:req > 0 ? req : null, end:$('newEnd').value, consent:true, days:{}};
+    save(); selId = id;
+    const files = newFiles; const reset = () => { ['newName','newSchool','newCourse','newReq','newEnd'].forEach(x => { $(x).value = ''; }); $('newConsent').checked = false; $('newPhotos').value = ''; newFiles = []; $('newThumbs').innerHTML = ''; };
+    if (useCam) { reset(); renderAll(); startEnroll(id, true); return; }
+    if (files.length) { $('newBtn').disabled = true; const ok = await uploadFaces(id, files, $('newMsg')); $('newBtn').disabled = false; if (ok) reset(); renderAll(); if (ok) toast(name + ' registered'); }
+    else { $('newMsg').textContent = name + ' saved without a face. Upload photos or use the camera from the list below.'; reset(); renderAll(); }
+  };
+  $('newBtn').onclick = () => addStudent(false);
+  $('newBtnCam').onclick = () => addStudent(true);
+  let armed = null, armTimer, rowTarget = null;
+  $('stuBody').addEventListener('click', e => {
+    const b = e.target.closest('button[data-act]'); if (!b || !isAdmin) return; const id = b.dataset.sid, s = DB.students[id]; if (!s) return;
+    if (b.dataset.act === 'upload') { rowTarget = id; $('rowFile').click(); }
+    else if (b.dataset.act === 'cam') startEnroll(id, true);
+    else if (b.dataset.act === 'reset') { s.faces = []; save(); renderAll(); toast('Face data cleared for ' + s.name); }
+    else if (b.dataset.act === 'del') {
+      if (armed !== id) { armed = id; b.textContent = 'Click again to delete'; clearTimeout(armTimer); armTimer = setTimeout(() => { armed = null; renderStudents(); }, 4000); return; }
+      armed = null; delete DB.students[id]; delPhotos(id); save(); renderAll(); toast(s.name + ' deleted');
+    }
+  });
+  $('rowFile').addEventListener('change', async e => {
+    const files = Array.from(e.target.files); e.target.value = ''; if (!rowTarget || !files.length) return;
+    const id = rowTarget; rowTarget = null; toast('Reading photos…');
+    const box = document.createElement('span'); const ok = await uploadFaces(id, files, box); toast(box.textContent); if (ok) renderAll();
+  });
+  $('stuBody').addEventListener('change', e => {
+    const t = e.target, s = DB.students[t.dataset.sid]; if (!s || !isAdmin) return;
+    const f = t.dataset.f;
+    if (f === 'name') { const v = t.value.trim(); if (v) s.name = v; else t.value = s.name; }
+    else if (f === 'req') s.req = parseFloat(t.value) > 0 ? parseFloat(t.value) : null;
+    else s[f] = t.value.trim();
+    save(); renderSelects(); renderDerived();
+  });
+
+  $('a-print').onclick = printDtr; $('a-xlsx').onclick = exportXlsx; $('a-csv').onclick = exportCsv;
+  $('admSave').onclick = () => { const u = $('admU').value.trim(), p = $('admP').value; if (!u || p.length < 6) { toast('Enter a username and a password of at least 6 characters'); return; } C().admin = adminHash(u, p); $('admU').value = ''; $('admP').value = ''; save(); toast('Admin login updated'); };
+  $('bk-dl').onclick = () => download('ojt-face-punch-backup-' + keyOf(new Date()) + '.json', 'application/json', JSON.stringify(DB, null, 2));
+  $('bk-file').onchange = e => { const f = e.target.files[0]; if (!f) return; const r = new FileReader(); r.onload = () => restore(String(r.result)); r.readAsText(f); e.target.value = ''; };
+  let eraseArm = 0;
+  $('eraseBtn').onclick = () => {
+    if (!eraseArm) { eraseArm = setTimeout(() => { eraseArm = 0; $('eraseBtn').textContent = 'Erase everything on this device'; }, 4000); $('eraseBtn').textContent = 'Click again to erase everything'; return; }
+    clearTimeout(eraseArm); eraseArm = 0; $('eraseBtn').textContent = 'Erase everything on this device';
+    DB = {v:2, sample:false, cfg:Object.assign({}, CFG), students:{}}; clearAllPhotos(); save(); renderAll(); toast('Everything erased');
+  };
+  document.addEventListener('pointerdown', () => { lastAct = Date.now(); });
+  setInterval(() => { if (isAdmin && Date.now() - lastAct > 10 * 60 * 1000) { isAdmin = false; applyLock(); toast('Admin logged out after 10 minutes without activity'); } }, 10000);
+
+  renderAll(); setTab('punch');
+  let lastDay = keyOf(new Date()), tick = 0;
+  setInterval(() => {
+    renderClock();
+    if (keyOf(new Date()) !== lastDay) { lastDay = keyOf(new Date()); renderAll(); }
+    else if (++tick % 30 === 0) { renderBoard(); if (tab === 'log') $('prog').innerHTML = progressHTML(cur()); }
+  }, 1000);
+}
+init();
+})();
+</script>
+</body>
+</html>
