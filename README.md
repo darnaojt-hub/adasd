@@ -84,3 +84,6 @@ MIT. See `LICENSE`.
 4. Change the admin username/password in **Settings → Admin account**. Only a hash is stored, never the plain password.
 
 **Security note:** the login is a client-side gate, not real security. The default password is visible to anyone who can read this repo, so change it right away and keep the repo private. Data stays in one browser on one computer.
+
+## Punch type boxes
+On the Punch tab, pick **Auto**, **Time in**, **Lunch out**, **Lunch in** or **Time out**. Auto records each student's next step. A chosen type is applied to every face recognized until you change it, and the app blocks out-of-order steps (for example, Lunch out before Time in).

@@ -50,6 +50,19 @@ h1{font:600 15px/1 var(--font-mono);letter-spacing:.1em;text-transform:uppercase
 .tabs button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--accent)}
 
 .card{background:var(--raised);border:1px solid var(--line);border-radius:6px;padding:18px;min-width:0}
+.modes{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px;margin:2px 0 14px}
+@media (max-width:560px){.modes{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.mode{display:flex;flex-direction:column;gap:2px;align-items:flex-start;text-align:left;padding:10px 12px;border:1.5px solid var(--line);border-radius:8px;background:var(--raised);color:var(--ink);cursor:pointer;font:600 14px var(--font-text);min-height:58px}
+.mode small{font:400 11px var(--font-mono);color:var(--muted)}
+.mode:hover{border-color:var(--accent)}
+.mode[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft);box-shadow:inset 0 0 0 1px var(--accent)}
+.mode .dot{width:9px;height:9px;border-radius:50%;background:var(--muted);display:inline-block;margin-right:6px}
+.mode[data-m="in"] .dot{background:var(--ok)}.mode[data-m="lo"] .dot,.mode[data-m="li"] .dot{background:var(--warn)}.mode[data-m="out"] .dot{background:var(--stamp)}.mode[data-m="auto"] .dot{background:var(--accent)}
+.tiles{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-bottom:12px}
+.tile{border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:var(--raised)}
+.tile b{display:block;font:600 22px var(--font-mono);line-height:1.2}.tile span{font:500 11px var(--font-mono);letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.tile.on b{color:var(--ok)}.tile.lunch b{color:var(--warn)}.tile.done b{color:var(--accent)}
+.modehint{font-size:12px;color:var(--muted);margin:-6px 0 12px}
 .grid2{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,.8fr);gap:16px;align-items:start}
 @media (max-width:860px){.grid2{grid-template-columns:minmax(0,1fr)}}
 .lbl{font:500 11px var(--font-mono);letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
@@ -214,6 +227,15 @@ textarea.paste{min-height:84px;font:12px var(--font-mono)}
       <div class="grid2">
         <div class="card">
           <div class="clockrow"><div class="clock" id="clock">--:--:--</div><div class="date" id="dateLine"></div></div>
+          <h2 style="margin:0 0 8px">What do you want to record?</h2>
+          <div class="modes" id="modes" role="group" aria-label="Punch type">
+            <button class="mode" type="button" data-m="auto" aria-pressed="true"><span><i class="dot"></i>Auto</span><small>next step</small></button>
+            <button class="mode" type="button" data-m="in" aria-pressed="false"><span><i class="dot"></i>Time in</span><small>AM arrival</small></button>
+            <button class="mode" type="button" data-m="lo" aria-pressed="false"><span><i class="dot"></i>Lunch out</span><small>AM departure</small></button>
+            <button class="mode" type="button" data-m="li" aria-pressed="false"><span><i class="dot"></i>Lunch in</span><small>PM arrival</small></button>
+            <button class="mode" type="button" data-m="out" aria-pressed="false"><span><i class="dot"></i>Time out</span><small>PM departure</small></button>
+          </div>
+          <div class="modehint" id="modeHint"></div>
           <div class="stage" id="stage">
             <video id="cam" playsinline muted autoplay></video>
             <canvas id="ov"></canvas>
@@ -231,6 +253,7 @@ textarea.paste{min-height:84px;font:12px var(--font-mono)}
         <div class="stack">
           <div class="card">
             <h2>Today</h2>
+            <div class="tiles" id="tiles"></div>
             <div id="board"></div>
           </div>
           <div class="card" id="manualCard" hidden>
@@ -476,6 +499,21 @@ function totals(s) {
 function monthTotal(s, y, m) { const dim = new Date(y, m+1, 0).getDate(); let t = 0; for (let d = 1; d <= dim; d++) { const r = s.days[dkey(y,m,d)]; if (r) t += calc(r).total; } return t; }
 const reqOf = s => s.req || C().required;
 const nextSlot = d => d.out ? null : (FIELDS.find(f => !d[f]) || null);
+let mode = 'auto';
+function pickSlot(d) {
+  d = d || {};
+  if (mode === 'auto') { const n = nextSlot(d); return n ? {slot:n} : {err:'Already done for today (' + f12(d.out) + ')'}; }
+  if (d[mode]) return {err:SLOTS[mode][0] + ' is already recorded at ' + f12(d[mode])};
+  if (mode === 'lo' && !d.in) return {err:'Record Time in first'};
+  if (mode === 'li' && !d.lo) return {err:'Record Lunch out first'};
+  if (mode === 'out' && !d.in) return {err:'Record Time in first'};
+  if (mode === 'out' && d.lo && !d.li) return {err:'Record Lunch in first'};
+  return {slot:mode};
+}
+function renderModes() {
+  document.querySelectorAll('#modes .mode').forEach(b => b.setAttribute('aria-pressed', b.dataset.m === mode ? 'true' : 'false'));
+  $('modeHint').textContent = mode === 'auto' ? 'Auto picks the next step for each student: Time in, Lunch out, Lunch in, then Time out.' : 'Everyone recognized now will be recorded as ' + SLOTS[mode][0] + '. Choose Auto to go back.';
+}
 function dayStatus(d) {
   if (!d || !d.in) return ['Not in', ''];
   if (d.out) return ['Done', 'done'];
@@ -549,7 +587,10 @@ function renderClock() {
 }
 function renderBoard() {
   const list = students(), tk = keyOf(new Date());
-  if (!list.length) { $('board').innerHTML = '<p class="empty">No students yet. Add one in the Students tab.</p>'; return; }
+  if (!list.length) { $('tiles').innerHTML = ''; $('board').innerHTML = '<p class="empty">No students yet. Ask the admin to register students.</p>'; return; }
+  const cnt = {on:0, lunch:0, done:0, out:0};
+  list.forEach(s => { const c = dayStatus(s.days[tk])[1]; if (c === 'on') cnt.on++; else if (c === 'lunch') cnt.lunch++; else if (c === 'done') cnt.done++; else cnt.out++; });
+  $('tiles').innerHTML = '<div class="tile on"><b>' + cnt.on + '</b><span>Working</span></div><div class="tile lunch"><b>' + cnt.lunch + '</b><span>On lunch</span></div><div class="tile done"><b>' + cnt.done + '</b><span>Done</span></div><div class="tile"><b>' + cnt.out + '</b><span>Not in</span></div>';
   $('board').innerHTML = '<table class="board"><thead><tr><th>Student</th><th>Status</th><th>Last</th><th>Hours</th></tr></thead><tbody>' + list.map(s => {
     const d = s.days[tk] || {}, st = dayStatus(d), last = [...FIELDS].reverse().find(f => d[f]);
     return '<tr><td>' + (s.avatar ? '<img class="avs" src="' + s.avatar + '" alt="">' : '') + esc(s.name) + '</td><td><span class="st ' + st[1] + '">' + st[0] + '</span></td><td style="font-family:var(--font-mono)">' + (last ? f12(d[last]) : '') + '</td><td style="font-family:var(--font-mono)">' + (d.in ? fdur(calc(d, nowMin()).total) : '') + '</td></tr>';
@@ -789,7 +830,7 @@ async function step() {
   const ready = cam.cand.hits >= 3 && (!C().blink || cam.cand.blinked);
   if (!ready) { setStatus(s.name + (C().blink && cam.cand.hits >= 3 ? ' · blink once to confirm' : ' · hold still…'), 'ok'); return; }
   if (C().auto) { cam.cand = null; await punchFor(m.id); }
-  else { const nx = nextSlot(s.days[keyOf(new Date())] || {}); setStatus(s.name, 'ok'); if (nx) { $('confirmBtn').hidden = false; $('confirmBtn').dataset.sid = s.id; $('confirmBtn').textContent = 'Punch ' + SLOTS[nx][0] + ' for ' + s.name; } else setStatus(s.name + ' · already done for today', 'ok'); }
+  else { const pk = pickSlot(s.days[keyOf(new Date())]), nx = pk.slot; setStatus(s.name, 'ok'); if (nx) { $('confirmBtn').hidden = false; $('confirmBtn').dataset.sid = s.id; $('confirmBtn').textContent = 'Punch ' + SLOTS[nx][0] + ' for ' + s.name; } else setStatus(s.name + ' · ' + pk.err, 'warn'); }
 }
 
 /* ---------- punching ---------- */
@@ -823,8 +864,9 @@ async function punchFor(id, manual) {
   const hold = (+C().pause || 5) * 1000; cam.pauseUntil = Date.now() + hold;
   const gap = (+C().gap || 0) * 1000;
   if (d.ts && Date.now() - d.ts < gap) { showResult(s, 'Already punched at ' + f12([...FIELDS].reverse().map(f => d[f]).find(Boolean)) + '. Wait a moment.', '', 'warn'); beep(300); if (!FIELDS.some(f => d[f])) delete s.days[k]; return; }
-  const slot = nextSlot(d);
-  if (!slot) { showResult(s, 'Already done for today (' + f12(d.out) + ')', '', 'warn'); beep(300); return; }
+  const pk = pickSlot(d);
+  if (!pk.slot) { showResult(s, pk.err, '', 'warn'); beep(300); if (!FIELDS.some(f => d[f])) delete s.days[k]; return; }
+  const slot = pk.slot;
   if (DB.sample && id !== 'sample') { delete DB.students.sample; DB.sample = false; }
   const t = nowHM(); d[slot] = t; d.ts = Date.now(); save();
   const photo = C().photos ? snap() : ''; if (photo) putPhoto(pkey(id, k, slot), photo);
@@ -999,6 +1041,8 @@ function init() {
   $('lockBtn').onclick = () => { if (isAdmin) { isAdmin = false; applyLock(); toast('Logged out'); } else askLogin(); };
 
   $('camStart').onclick = startCamera; $('camStop').onclick = stopCamera;
+  document.querySelectorAll('#modes .mode').forEach(b => { b.onclick = () => { mode = b.dataset.m; renderModes(); cam.cand = null; $('confirmBtn').hidden = true; }; });
+  renderModes();
   $('confirmBtn').onclick = () => { const id = $('confirmBtn').dataset.sid; $('confirmBtn').hidden = true; if (id) punchFor(id); };
   $('manBtn').onclick = () => { const id = $('manSel').value; if (id) punchFor(id, true); };
   $('clearSample').onclick = () => { delete DB.students.sample; DB.sample = false; save(); renderAll(); };
